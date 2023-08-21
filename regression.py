@@ -6,7 +6,7 @@ import torch
 from torch import nn
 from torch import optim
 
-from utils.plot_utils import scatter_plot_model
+from plot_utils import scatter_plot_model
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
