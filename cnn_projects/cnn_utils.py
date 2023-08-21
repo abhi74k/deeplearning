@@ -6,14 +6,14 @@ from torch.utils.data import DataLoader
 from torch.utils.data import TensorDataset
 
 
-def load_happy_dataset():
-    train_dataset = h5py.File('datasets/train_happy.h5', "r")
+def load_h5_dataset(train_filename, test_filename):
+    train_dataset = h5py.File(train_filename, "r")
     train_set_x_orig = np.array(train_dataset["train_set_x"][:])
     train_set_x_orig = np.transpose(train_set_x_orig,
                                     [0, 3, 1, 2])  # Torch expects (batch_size, channels, width, height)
     train_set_y_orig = np.array(train_dataset["train_set_y"][:])  # your train set labels
 
-    test_dataset = h5py.File('datasets/test_happy.h5', "r")
+    test_dataset = h5py.File(test_filename, "r")
     test_set_x_orig = np.array(test_dataset["test_set_x"][:])
     test_set_x_orig = np.transpose(test_set_x_orig, [0, 3, 1, 2])  # Torch expects (batch_size, channels, width, height)
     test_set_y_orig = np.array(test_dataset["test_set_y"][:])  # your test set labels
@@ -36,6 +36,14 @@ def load_happy_dataset():
     return train_set_x_orig, train_set_y_orig, test_set_x_orig, test_set_y_orig, classes
 
 
+def load_happy_dataset():
+    return load_h5_dataset('datasets/train_happy.h5', 'datasets/test_happy.h5')
+
+
+def load_signs_dataset():
+    return load_h5_dataset('datasets/train_signs.h5', 'datasets/test_signs.h5')
+
+
 def predict(model, X):
     model.eval()
     with torch.no_grad():
@@ -44,7 +52,7 @@ def predict(model, X):
         return y_pred
 
 
-def calculate_accuracy(model, data_loader):
+def calculate_2class_accuracy(model, data_loader):
     model.eval()
     with torch.no_grad():
         correct = 0
@@ -58,13 +66,28 @@ def calculate_accuracy(model, data_loader):
         return accuracy
 
 
+def calculate_multi_class_accuracy(model, data_loader):
+    model.eval()
+    with torch.no_grad():
+        correct = 0
+        total = 0
+        for X, y in data_loader:
+            y_pred = model(X)
+            y_pred_classes = torch.argmax(y_pred, dim=1)
+            correct += (y_pred_classes.view(-1) == y.view(-1)).sum().item()
+            total += y.shape[0]
+        accuracy = correct / total
+        return accuracy
+
+
 def create_device():
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     return device
 
 
 def training_loop(model, criterion, optimizer, train_X, train_y,
-                  device=create_device(), epochs=50, batch_size=64):
+                  device=create_device(), epochs=50, batch_size=64,
+                  accuracy_fn=calculate_2class_accuracy):
     model.to(device)
 
     # Load data
@@ -78,16 +101,27 @@ def training_loop(model, criterion, optimizer, train_X, train_y,
         for X, y in train_dataloader:
             X, y = X.to(device), y.to(device)
             y_pred = model(X)
+
+            """
+            For binary classification(BCELoss), y andy_pred can both be floats
+            
+            For multi class classification, y_pred is an array of probabilities for each class.
+            We need to convert y to a single dimension array which has to be uint8.
+            """
+            if y_pred.shape[1] > 1 and y.shape[1] == 1:
+                y = y.view(-1).to(torch.uint8)
+
             loss = criterion(y_pred, y)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
         if epoch % 10 == 0:
-            print(f'Epoch: {epoch}, Loss: {loss.item()}, Accuracy: {calculate_accuracy(model, train_dataloader)}')
+            print(
+                f'Epoch: {epoch}, Loss: {loss.item()}, Accuracy: {accuracy_fn(model, train_dataloader)}')
 
 
-def test_single(model, test_X, test_y, device=create_device()):
+def test_single(model, test_X, test_y, device=create_device(), classification='binary'):
     model.to(device)
 
     test_dataset = TensorDataset(test_X, test_y)
@@ -95,8 +129,13 @@ def test_single(model, test_X, test_y, device=create_device()):
     X, y = next(iter(test_dataloader))
     X = X.to(device)
     y_test_pred = predict(model, X)
+    y_test_pred.to('cpu')
 
     # Plot the image
-    print(f"y = {y.item()}, y_pred = {y_test_pred.item()}")
+    if classification == 'binary':
+        print(f"y = {y.item()}, y_pred = {y_test_pred.item()}")
+    else:
+        print(f"y = {y.item()}, y_pred = {torch.argmax(y_test_pred).item()}")
+
     img = Image.fromarray(torch.squeeze(X, dim=0).cpu().numpy().astype('uint8').transpose([1, 2, 0]))
     img.show()

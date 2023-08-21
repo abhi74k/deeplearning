@@ -38,6 +38,7 @@ class MoodClassifierCNN(nn.Module):
 
 if __name__ == '__main__':
     cnn = MoodClassifierCNN()
+    print(cnn)
 
     # Load data
     train_X, train_y, test_X, test_y, classes = load_happy_dataset()
@@ -45,7 +46,9 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(cnn.parameters(), lr=0.001)
 
     training_loop(cnn, criterion, optimizer, train_X, train_y)
-    test_single(cnn, test_X, test_y)
+
+    for _ in range(5):
+        test_single(cnn, test_X, test_y)
 
     # Test a sad image
     sad_mask = (test_y.view(-1) == 0)
