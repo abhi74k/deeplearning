@@ -5,7 +5,6 @@ from PIL import Image
 from torch.utils.data import DataLoader
 from torch.utils.data import TensorDataset
 
-
 def load_h5_dataset(train_filename, test_filename):
     train_dataset = h5py.File(train_filename, "r")
     train_set_x_orig = np.array(train_dataset["train_set_x"][:])
@@ -52,7 +51,7 @@ def predict(model, X):
         return y_pred
 
 
-def calculate_2class_accuracy(model, data_loader):
+def calculate_binary_class_accuracy(model, data_loader):
     model.eval()
     with torch.no_grad():
         correct = 0
@@ -87,7 +86,7 @@ def create_device():
 
 def training_loop(model, criterion, optimizer, train_X, train_y,
                   device=create_device(), epochs=50, batch_size=64,
-                  accuracy_fn=calculate_2class_accuracy):
+                  accuracy_fn=calculate_binary_class_accuracy):
     model.to(device)
 
     # Load data
