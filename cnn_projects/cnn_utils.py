@@ -4,6 +4,8 @@ import torch
 from PIL import Image
 from torch.utils.data import DataLoader
 from torch.utils.data import TensorDataset
+import matplotlib.pyplot as plt
+
 
 def load_h5_dataset(train_filename, test_filename):
     train_dataset = h5py.File(train_filename, "r")
@@ -84,14 +86,32 @@ def create_device():
     return device
 
 
+def image_show(input_tensor, label=None, pause_duration=0.001):
+    input_np = input_tensor.numpy().transpose([1, 2, 0])  # HWC
+    mean = np.array([0.485, 0.456, 0.456])
+    std = np.array([0.229, 0.224, 0.225])
+    input_np = std * input_np + mean
+    input_np = np.clip(input_np, 0, 1)
+    plt.imshow(input_np)
+    if label is not None:
+        plt.title(label)
+    plt.pause(pause_duration)
+
+
 def training_loop(model, criterion, optimizer, train_X, train_y,
                   device=create_device(), epochs=50, batch_size=64,
                   accuracy_fn=calculate_binary_class_accuracy):
-    model.to(device)
-
-    # Load data
     train_dataset = TensorDataset(train_X, train_y)
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+
+    training_loop_with_dataloader(model, criterion, optimizer, train_dataloader, device, epochs, accuracy_fn)
+
+
+def training_loop_with_dataloader(model, criterion, optimizer, train_dataloader,
+                                  device=create_device(), epochs=50,
+                                  accuracy_fn=calculate_binary_class_accuracy,
+                                  scheduler=None):
+    model.to(device)
 
     for epoch in range(epochs):
 
@@ -104,10 +124,10 @@ def training_loop(model, criterion, optimizer, train_X, train_y,
             """
             For binary classification(BCELoss), y andy_pred can both be floats
             
-            For multi class classification, y_pred is an array of probabilities for each class.
-            We need to convert y to a single dimension array which has to be uint8.
+            For multi class classification, y_pred is an array of probabilities for each class i.e (batch size, num_classes).
+            If y is of dimension (batchSize, 1) it should converted (batchSize,) and type uint8
             """
-            if y_pred.shape[1] > 1 and y.shape[1] == 1:
+            if y_pred.shape[1] > 1 and y.shape[0] == y_pred.shape[0] and len(y.shape) > 1 and y.shape[1] == 1:
                 y = y.view(-1).to(torch.uint8)
 
             loss = criterion(y_pred, y)
@@ -115,16 +135,23 @@ def training_loop(model, criterion, optimizer, train_X, train_y,
             loss.backward()
             optimizer.step()
 
+            if scheduler is not None:
+                scheduler.step()
+
         if epoch % 10 == 0:
             print(
                 f'Epoch: {epoch}, Loss: {loss.item()}, Accuracy: {accuracy_fn(model, train_dataloader)}')
 
 
 def test_single(model, test_X, test_y, device=create_device(), classification='binary'):
-    model.to(device)
-
     test_dataset = TensorDataset(test_X, test_y)
     test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=True)
+    test_single_with_dataloader(model, test_dataloader, device, classification)
+
+
+def test_single_with_dataloader(model, test_dataloader, device=create_device(), classification='binary', labels={}):
+    model.to(device)
+
     X, y = next(iter(test_dataloader))
     X = X.to(device)
     y_test_pred = predict(model, X)
@@ -136,5 +163,8 @@ def test_single(model, test_X, test_y, device=create_device(), classification='b
     else:
         print(f"y = {y.item()}, y_pred = {torch.argmax(y_test_pred).item()}")
 
-    img = Image.fromarray(torch.squeeze(X, dim=0).cpu().numpy().astype('uint8').transpose([1, 2, 0]))
-    img.show()
+    label = None
+    if len(labels) > 0:
+        label = labels[y.item()]
+
+    image_show(torch.squeeze(X, dim=0).cpu(), label)

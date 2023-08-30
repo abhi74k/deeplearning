@@ -45,7 +45,7 @@ if __name__ == '__main__':
     criterion = nn.BCELoss()
     optimizer = torch.optim.Adam(cnn.parameters(), lr=0.001)
 
-    training_loop(cnn, criterion, optimizer, train_X, train_y)
+    training_loop(cnn, criterion, optimizer, train_X, train_y, epochs=50)
 
     for _ in range(5):
         test_single(cnn, test_X, test_y)
